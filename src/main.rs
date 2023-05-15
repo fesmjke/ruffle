@@ -1,17 +1,22 @@
-use std::{thread, time, println};
+use std::{println, thread, time};
 
-use crate::world::World;
 use crate::life::Organism;
+use crate::world::World;
 
 mod life;
-mod world;
 mod position;
+mod world;
 
 fn main() {
-    let mut world = World::new(5, 5, vec![Organism::Alive(crate::position::Position { x: 1, y: 1 }),
+    let mut world = World::new(
+        5,
+        5,
+        vec![
+            Organism::Alive(crate::position::Position { x: 1, y: 1 }),
             Organism::Alive(crate::position::Position { x: 1, y: 0 }),
             Organism::Alive(crate::position::Position { x: 1, y: 2 }),
-            ]);
+        ],
+    );
 
     loop {
         world.draw();

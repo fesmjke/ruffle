@@ -3,7 +3,7 @@ use crate::position::Position;
 #[derive(Clone, Copy)]
 pub enum Organism {
     Dead,
-    Alive(Position)
+    Alive(Position),
 }
 
 impl Organism {
