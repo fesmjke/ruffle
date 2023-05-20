@@ -13,10 +13,10 @@ impl World {
     pub fn new(w: usize, h: usize, alive: Vec<Organism>) -> Self {
         let mut initial_cells = vec![];
 
-        for x in 0..w {
+        for _ in 0..w {
             let mut temp: Vec<Organism> = vec![];
 
-            for y in 0..h {
+            for _ in 0..h {
                 temp.push(Organism::Dead);
             }
 
