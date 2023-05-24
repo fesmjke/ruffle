@@ -1,4 +1,7 @@
-use std::{println, thread, time};
+extern crate termion;
+
+use std::io::{Write, stdout, stdin};
+use std::{thread, time};
 
 use crate::life::Organism;
 use crate::world::World;
@@ -7,10 +10,19 @@ mod life;
 mod position;
 mod world;
 
-fn main() {
+
+fn main() {    
+    let mut width = 10 as usize;
+    let mut height = 10 as usize;
+    
+    let mut stdin = stdin();
+    let mut stdout = stdout();
+
     let mut world = World::new(
-        5,
-        5,
+        width,
+        height,
+        stdout,
+        stdin,
         vec![
             Organism::Alive(crate::position::Position { x: 1, y: 1 }),
             Organism::Alive(crate::position::Position { x: 1, y: 0 }),
@@ -23,8 +35,6 @@ fn main() {
         world.next();
 
         thread::sleep(time::Duration::from_millis(1000));
-
-        print!("\x1B[2J\x1B[1;1H");
 
         if !world.dead() {
             world.draw();
