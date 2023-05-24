@@ -1,16 +1,19 @@
-use std::println;
-
+use termion::{raw::IntoRawMode, input::TermRead, event::Key};
 use crate::{life::Organism, position::Position};
+use std::io::{Write,Stdin,Stdout,stdout};
 
 pub struct World {
     width: usize,
     height: usize,
+    stdout: Stdout,
+    stdin: Stdin,  
     buffer: Vec<Vec<Organism>>,
     cells: Vec<Vec<Organism>>,
 }
 
 impl World {
-    pub fn new(w: usize, h: usize, alive: Vec<Organism>) -> Self {
+    pub fn new(w: usize, h: usize, stdout: Stdout,
+        stdin: Stdin , alive: Vec<Organism>) -> Self {
         let mut initial_cells = vec![];
 
         for _ in 0..w {
@@ -33,6 +36,8 @@ impl World {
         World {
             width: w,
             height: h,
+            stdout,
+            stdin,
             buffer: vec![],
             cells: initial_cells,
         }
@@ -133,15 +138,62 @@ impl World {
         std::mem::swap(&mut self.cells, &mut self.buffer);
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&mut self) {
+        let mut terminal: (u16,u16) = (0,0);
+
+        match termion::terminal_size() {
+            Ok(n) => {
+                terminal = n;
+            },
+            Err(e) => {
+                write!(self.stdout, "Error during call a terminal size");
+            }
+        }
+
+        let center_col = terminal.0 / 2;
+        let center_row = terminal.1 / 2;
+
+        write!(self.stdout, "{}", termion::clear::All);
+
         for x in 0..self.width {
+            let mut row = String::new();
+            
             for y in 0..self.height {
                 match self.cells[x][y] {
-                    Organism::Dead => print!(" ▢ "),
-                    Organism::Alive(_) => print!(" ◉ "),
+                    Organism::Dead => row.push_str(" ▢ "),
+                    Organism::Alive(_) => row.push_str(" ◉ "),
                 }
             }
-            println!("");
+
+            let dc = center_col - (row.len() as u16 / 2) + self.width as u16;
+            let dr = center_row + x as u16 - (self.height as u16 / 2);
+
+            write!(self.stdout, "{} {}", termion::cursor::Goto(dc, dr), row);
+
+            self.stdout.flush();
+        }
+    }
+
+    pub fn resize(&mut self) {
+        let rstdout = stdout().into_raw_mode().unwrap();
+
+        let stdin = self.stdin.lock();
+
+        for key in stdin.keys() {
+            match key.unwrap() {
+                Key::Char('q') => {break},
+                Key::Char('+') => {
+                    todo!();
+                }
+                Key::Char('-') => {
+                    todo!();
+                },
+                _ => {}
+            }
+
+            self.draw();
+
+            self.stdout.flush();
         }
     }
 }
@@ -152,11 +204,17 @@ mod tests {
     mod neighbours {
         use crate::{life::Organism, world::World};
 
+        
         #[test]
         fn collect_alive_neighbours() {
+            let mut stdin = stdin();
+            let mut stdout = stdout();
+            
             let world = World::new(
                 3,
                 3,
+                stdin,
+                stdout,
                 vec![
                     Organism::Alive(crate::position::Position { x: 1, y: 1 }),
                     Organism::Alive(crate::position::Position { x: 0, y: 0 }),
@@ -171,9 +229,14 @@ mod tests {
 
         #[test]
         fn calculate_neighbours() {
+            let mut stdin = stdin();
+            let mut stdout = stdout();
+            
             let world = World::new(
                 3,
                 3,
+                stdin,
+                stdout,
                 vec![
                     Organism::Alive(crate::position::Position { x: 1, y: 1 }),
                     Organism::Alive(crate::position::Position { x: 0, y: 0 }),
