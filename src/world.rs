@@ -9,7 +9,16 @@ pub struct World {
     stdin: Stdin,  
     buffer: Vec<Vec<Organism>>,
     cells: Vec<Vec<Organism>>,
+    message: String
 }
+
+enum Vary {
+    Increase,
+    Decrease
+}
+
+const WORLD_MAX_LIMIT : usize = 20;
+const WORLD_MIN_LIMIT : usize = 5;
 
 impl World {
     pub fn new(w: usize, h: usize, stdout: Stdout,
@@ -40,17 +49,18 @@ impl World {
             stdin,
             buffer: vec![],
             cells: initial_cells,
+            message : String::new()
         }
     }
 
-    fn collect_alive(&self) -> usize {
+    fn collect_alive(&self) -> Vec<Organism> {
         let collected: Vec<Organism> = self
             .cells
             .iter()
             .flat_map(|row| row.iter().cloned().filter(|cell| cell.is_alive()))
             .collect();
 
-        collected.len()
+        collected
     }
 
     fn is_valid(&self, x: usize, y: usize) -> bool {
@@ -91,8 +101,47 @@ impl World {
         neighbours as usize
     }
 
+    fn change_world(&mut self, direction : Vary){
+        match direction {
+            Vary::Increase => {
+                if self.width == WORLD_MAX_LIMIT {
+                    self.message = "Unable to increase world size, because its reaches a world max limit!".to_string();
+                } else {
+                    self.width += 1;
+                    self.height += 1;
+                }
+            },
+            Vary::Decrease => {
+                if self.width == WORLD_MIN_LIMIT {
+                    self.message = "Unable to decrease world size, because its reaches a world min limit!".to_string();
+                } else {
+                    self.width -= 1;
+                    self.height -= 1;
+                }
+            },
+        }
+
+        for row in self.cells.iter_mut() {
+            row.resize(self.width, Organism::Dead);
+        }
+
+        self.cells.resize(self.width, vec![Organism::Dead;self.width]);
+
+        // todo ? 
+        // reload alive cells to new vectors
+    }
+    
+    fn status(&mut self) {
+        write!(self.stdout, "{}World size is {}x{}", termion::cursor::Goto(1,1), self.width, self.height);
+
+        if self.message.len() > 0 {
+            write!(self.stdout, "{} {}", termion::cursor::Goto(1,2), self.message);
+            self.message.clear();
+        }
+    }
+
     pub fn dead(&self) -> bool {
-        self.collect_alive() > 0
+        self.collect_alive().len() > 0
     }
 
     pub fn next(&mut self) {
@@ -183,15 +232,15 @@ impl World {
             match key.unwrap() {
                 Key::Char('q') => {break},
                 Key::Char('+') => {
-                    todo!();
+                    self.change_world(Vary::Increase);
                 }
                 Key::Char('-') => {
-                    todo!();
+                    self.change_world(Vary::Decrease);
                 },
                 _ => {}
             }
-
             self.draw();
+            self.status();
 
             self.stdout.flush();
         }
@@ -224,7 +273,7 @@ mod tests {
 
             let collected = world.collect_alive();
 
-            assert_eq!(collected, 3);
+            assert_eq!(collected.len(), 3);
         }
 
         #[test]
