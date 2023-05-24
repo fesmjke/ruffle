@@ -187,7 +187,7 @@ impl World {
         std::mem::swap(&mut self.cells, &mut self.buffer);
     }
 
-    pub fn draw(&mut self) {
+    fn get_term_size(&self) {
         let mut terminal: (u16,u16) = (0,0);
 
         match termion::terminal_size() {
@@ -198,6 +198,12 @@ impl World {
                 write!(self.stdout, "Error during call a terminal size");
             }
         }
+
+        terminal
+    }
+
+    pub fn draw(&mut self) {
+        let terminal = self.get_term_size();
 
         let center_col = terminal.0 / 2;
         let center_row = terminal.1 / 2;
