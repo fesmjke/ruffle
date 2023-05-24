@@ -30,6 +30,8 @@ fn main() {
         ],
     );
 
+    world.resize();
+
     loop {
         world.draw();
         world.next();
