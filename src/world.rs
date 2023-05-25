@@ -1,5 +1,5 @@
-use termion::{raw::IntoRawMode, input::TermRead, event::Key};
-use crate::{life::Organism, position::Position};
+use termion::{raw::IntoRawMode, input::TermRead, event::Key, cursor::DetectCursorPos};
+use crate::{life::Organism, position::{Position, self}};
 use std::io::{Write,Stdin,Stdout,stdout};
 
 pub struct World {
@@ -133,7 +133,6 @@ impl World {
     
     fn status(&mut self) {
         write!(self.stdout, "{}World size is {}x{}", termion::cursor::Goto(1,1), self.width, self.height);
-
         if self.message.len() > 0 {
             write!(self.stdout, "{} {}", termion::cursor::Goto(1,2), self.message);
             self.message.clear();
@@ -187,7 +186,7 @@ impl World {
         std::mem::swap(&mut self.cells, &mut self.buffer);
     }
 
-    fn get_term_size(&self) {
+    fn get_term_size(&mut self) -> (u16,u16) {
         let mut terminal: (u16,u16) = (0,0);
 
         match termion::terminal_size() {
@@ -224,6 +223,111 @@ impl World {
             let dr = center_row + x as u16 - (self.height as u16 / 2);
 
             write!(self.stdout, "{} {}", termion::cursor::Goto(dc, dr), row);
+
+            self.stdout.flush();
+        }
+    }
+
+    pub fn modify(&mut self) {
+        let rstdout = stdout().into_raw_mode().unwrap();
+
+        let stdin = self.stdin.lock();
+
+        let terminal = self.get_term_size();
+
+        let mut cursor_position : (u16,u16) = (0,0);
+        let mut cell_position = Position::new(0,0);
+        
+        let row_width = (self.width * 3) as u16; // width * len(" ▢ ")
+        
+        let center_col = terminal.0 / 2;
+        let center_row = terminal.1 / 2;
+
+        let mut initial_col = center_col - row_width / 2 + 2; // +2 - offset
+        let mut initial_row = center_row - (self.height as u16 / 2);
+
+        let offset_lr = 3; // left-right
+        let offset_td = 1; // top-down
+
+        // moves cursor to first element in field
+        cursor_position.0 = initial_col; 
+        cursor_position.1 = initial_row;
+
+        self.draw();
+
+        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+
+        self.stdout.flush();
+
+        for key in stdin.keys() {
+            match key.unwrap() {
+                Key::Char('q') => {break},
+                Key::Up => {
+                    if cell_position.x == 0 {
+                        write!(self.stdout, "{} Cannot move up anymore!", termion::cursor::Goto(1,1));
+                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                    } else {
+                        cell_position.x -= 1;
+                        cursor_position.1 -= offset_td;
+                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                    }
+                }
+                Key::Down => {
+                    if cell_position.x == self.width - 1 {
+                        write!(self.stdout, "{} Cannot move down anymore!", termion::cursor::Goto(1,1));
+                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                    } else {
+                        cell_position.x += 1;
+                        cursor_position.1 += offset_td;
+                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                    }
+                },
+                Key::Left => {
+                    if cell_position.y == 0 {
+                        write!(self.stdout, "{} Cannot move left anymore!", termion::cursor::Goto(1,1));
+                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                    } else {
+                        cell_position.y -= 1;
+                        cursor_position.0 -= offset_lr;
+                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                    }
+                }
+                Key::Right => {
+                    if cell_position.y == self.height - 1{
+                        write!(self.stdout, "{} Cannot move right anymore!", termion::cursor::Goto(1,1));
+                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                    } else {
+                        cell_position.y += 1;
+                        cursor_position.0 += offset_lr;
+                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                    }
+                }
+                Key::Char('a') => {
+                    match self.cells[cell_position.x][cell_position.y] {
+                        Organism::Dead => {
+                            self.cells[cell_position.x][cell_position.y] = Organism::Alive(Position { x: cell_position.x, y: cell_position.y })
+                        },
+                        Organism::Alive(_) => {
+                            write!(self.stdout, "{} Cannot add new alive organism, because this cell already has alive organism!", termion::cursor::Goto(1,1));
+                        },
+                    }
+                },
+                Key::Char('d') => {
+                    match self.cells[cell_position.x][cell_position.y] {
+                        Organism::Dead => {
+                            write!(self.stdout, "{} Cannot delete alive organism, because this cell already has dead organism!", termion::cursor::Goto(1,1));
+                        },
+                        Organism::Alive(_) => {
+                            self.cells[cell_position.x][cell_position.y] = Organism::Dead;
+                        },
+                    }
+                }
+                _ => {}
+            }
+
+            self.draw();
+
+            write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
 
             self.stdout.flush();
         }
