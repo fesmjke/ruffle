@@ -1,7 +1,9 @@
 extern crate termion;
 
-use std::io::{Write, stdout, stdin};
+use std::io::{Write, stdout, stdin, Stdout};
 use std::{thread, time};
+
+use termion::async_stdin;
 
 use crate::life::Organism;
 use crate::world::World;
@@ -9,13 +11,13 @@ use crate::world::World;
 mod life;
 mod position;
 mod world;
-
+mod menu;
 
 fn main() {    
     let mut width = 10 as usize;
     let mut height = 10 as usize;
     
-    let mut stdin = stdin();
+    let mut stdin = async_stdin();
     let mut stdout = stdout();
 
     let mut world = World::new(
@@ -30,19 +32,5 @@ fn main() {
         ],
     );
 
-    world.resize();
-
-    loop {
-        world.draw();
-        world.next();
-
-        thread::sleep(time::Duration::from_millis(1000));
-
-        if !world.dead() {
-            world.draw();
-            break;
-        }
-    }
-
-    println!("Your world is dead!")
+    world.process();
 }
