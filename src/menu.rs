@@ -39,7 +39,13 @@ impl Menu {
             let dr = offset + index as u16;
             
             if line.contains("#") {
-                write!(stdout, "{} {}", termion::cursor::Goto(1,dr), temp.replace("#", alive.to_string().as_str())); // 
+                let lives = format!("{}", alive);
+                
+                if alive > 10 {
+                    write!(stdout, "{} {}", termion::cursor::Goto(1,dr), temp.replace("# ", lives.as_str()));
+                } else {
+                    write!(stdout, "{} {}", termion::cursor::Goto(1,dr), temp.replace("#", lives.as_str()));
+                } 
             } else if line.contains("?") {
                 let sz = format!("{}x{}", size, size);
 
