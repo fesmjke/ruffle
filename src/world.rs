@@ -1,12 +1,21 @@
-use termion::{raw::IntoRawMode, input::TermRead, event::Key, cursor::DetectCursorPos};
+use termion::{raw::IntoRawMode, input::TermRead, event::Key, cursor::DetectCursorPos, async_stdin, AsyncReader};
 use crate::{life::Organism, position::{Position, self}};
-use std::io::{Write,Stdin,Stdout,stdout};
+use crate::menu::Menu;
+use std::{io::{Write,Read,Stdin,Stdout,stdout, stdin}, thread};
+
+enum State {
+    Draw,
+    Resize,
+    Modify,
+    Exit
+}
 
 pub struct World {
     width: usize,
     height: usize,
     stdout: Stdout,
-    stdin: Stdin,  
+    stdin: AsyncReader,
+    state : State,
     buffer: Vec<Vec<Organism>>,
     cells: Vec<Vec<Organism>>,
     message: String
@@ -22,7 +31,7 @@ const WORLD_MIN_LIMIT : usize = 5;
 
 impl World {
     pub fn new(w: usize, h: usize, stdout: Stdout,
-        stdin: Stdin , alive: Vec<Organism>) -> Self {
+        stdin: AsyncReader , alive: Vec<Organism>) -> Self {
         let mut initial_cells = vec![];
 
         for _ in 0..w {
@@ -47,6 +56,7 @@ impl World {
             height: h,
             stdout,
             stdin,
+            state: State::Draw,
             buffer: vec![],
             cells: initial_cells,
             message : String::new()
@@ -139,11 +149,11 @@ impl World {
         }
     }
 
-    pub fn dead(&self) -> bool {
+    fn dead(&self) -> bool {
         self.collect_alive().len() > 0
     }
 
-    pub fn next(&mut self) {
+    fn next(&mut self) {
         self.buffer = self.cells.clone();
 
         for x in 0..self.width {
@@ -201,13 +211,11 @@ impl World {
         terminal
     }
 
-    pub fn draw(&mut self) {
+    fn draw(&mut self) {
         let terminal = self.get_term_size();
 
         let center_col = terminal.0 / 2;
         let center_row = terminal.1 / 2;
-
-        write!(self.stdout, "{}", termion::clear::All);
 
         for x in 0..self.width {
             let mut row = String::new();
@@ -228,10 +236,8 @@ impl World {
         }
     }
 
-    pub fn modify(&mut self) {
+    fn modify(&mut self) {
         let rstdout = stdout().into_raw_mode().unwrap();
-
-        let stdin = self.stdin.lock();
 
         let terminal = self.get_term_size();
 
@@ -259,100 +265,158 @@ impl World {
 
         self.stdout.flush();
 
-        for key in stdin.keys() {
-            match key.unwrap() {
-                Key::Char('q') => {break},
-                Key::Up => {
-                    if cell_position.x == 0 {
-                        write!(self.stdout, "{} Cannot move up anymore!", termion::cursor::Goto(1,1));
-                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
-                    } else {
-                        cell_position.x -= 1;
-                        cursor_position.1 -= offset_td;
-                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+        loop {
+            let mut b: [u8; 1] = [0];
+
+            if self.stdin.read(&mut b).is_ok() {
+                match b[0] {
+                    b'q' => {break},
+                    b'w' => {
+                        if cell_position.x == 0 {
+                            write!(self.stdout, "{} Cannot move up anymore!", termion::cursor::Goto(1,1));
+                            write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                        } else {
+                            cell_position.x -= 1;
+                            cursor_position.1 -= offset_td;
+                            write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                        }
+                    },
+                    b's' => {
+                        if cell_position.x == self.width - 1 {
+                            write!(self.stdout, "{} Cannot move down anymore!", termion::cursor::Goto(1,1));
+                            write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                        } else {
+                            cell_position.x += 1;
+                            cursor_position.1 += offset_td;
+                            write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                        }
+                    },
+                    b'a' => {
+                        if cell_position.y == 0 {
+                            write!(self.stdout, "{} Cannot move left anymore!", termion::cursor::Goto(1,1));
+                            write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                        } else {
+                            cell_position.y -= 1;
+                            cursor_position.0 -= offset_lr;
+                            write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                        }
+                    },
+                    b'd' => {
+                        if cell_position.y == self.height - 1{
+                            write!(self.stdout, "{} Cannot move right anymore!", termion::cursor::Goto(1,1));
+                            write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                        } else {
+                            cell_position.y += 1;
+                            cursor_position.0 += offset_lr;
+                            write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
+                        }
+                    },
+                    b'i' => {
+                        match self.cells[cell_position.x][cell_position.y] {
+                            Organism::Dead => {
+                                self.cells[cell_position.x][cell_position.y] = Organism::Alive(Position { x: cell_position.x, y: cell_position.y })
+                            },
+                            Organism::Alive(_) => {
+                                write!(self.stdout, "{} Cannot add new alive organism, because this cell already has alive organism!", termion::cursor::Goto(1,1));
+                            },
+                        }
+                    },
+                    b'o' => {
+                        match self.cells[cell_position.x][cell_position.y] {
+                            Organism::Dead => {
+                                write!(self.stdout, "{} Cannot delete alive organism, because this cell already has dead organism!", termion::cursor::Goto(1,1));
+                            },
+                            Organism::Alive(_) => {
+                                self.cells[cell_position.x][cell_position.y] = Organism::Dead;
+                            },
+                        }
                     }
+                    _ => {}
                 }
-                Key::Down => {
-                    if cell_position.x == self.width - 1 {
-                        write!(self.stdout, "{} Cannot move down anymore!", termion::cursor::Goto(1,1));
-                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
-                    } else {
-                        cell_position.x += 1;
-                        cursor_position.1 += offset_td;
-                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
-                    }
-                },
-                Key::Left => {
-                    if cell_position.y == 0 {
-                        write!(self.stdout, "{} Cannot move left anymore!", termion::cursor::Goto(1,1));
-                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
-                    } else {
-                        cell_position.y -= 1;
-                        cursor_position.0 -= offset_lr;
-                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
-                    }
-                }
-                Key::Right => {
-                    if cell_position.y == self.height - 1{
-                        write!(self.stdout, "{} Cannot move right anymore!", termion::cursor::Goto(1,1));
-                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
-                    } else {
-                        cell_position.y += 1;
-                        cursor_position.0 += offset_lr;
-                        write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
-                    }
-                }
-                Key::Char('a') => {
-                    match self.cells[cell_position.x][cell_position.y] {
-                        Organism::Dead => {
-                            self.cells[cell_position.x][cell_position.y] = Organism::Alive(Position { x: cell_position.x, y: cell_position.y })
-                        },
-                        Organism::Alive(_) => {
-                            write!(self.stdout, "{} Cannot add new alive organism, because this cell already has alive organism!", termion::cursor::Goto(1,1));
-                        },
-                    }
-                },
-                Key::Char('d') => {
-                    match self.cells[cell_position.x][cell_position.y] {
-                        Organism::Dead => {
-                            write!(self.stdout, "{} Cannot delete alive organism, because this cell already has dead organism!", termion::cursor::Goto(1,1));
-                        },
-                        Organism::Alive(_) => {
-                            self.cells[cell_position.x][cell_position.y] = Organism::Dead;
-                        },
-                    }
-                }
-                _ => {}
-            }
+            } 
 
             self.draw();
 
             write!(self.stdout, "{}", termion::cursor::Goto(cursor_position.0, cursor_position.1));
 
             self.stdout.flush();
+
+            thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+    
+    fn clear(&mut self) {
+        write!(self.stdout, "{}", termion::clear::All);
+    }
+
+    fn resize(&mut self) {
+        let rstdout = stdout().into_raw_mode().unwrap();
+
+        self.draw();
+
+        loop {
+            let mut b: [u8; 1] = [0];
+
+            if self.stdin.read(&mut b).is_ok() {
+                match b[0] {
+                    b'q' => {break},
+                    b'+' => self.change_world(Vary::Increase),
+                    b'-' => self.change_world(Vary::Decrease),
+                    _ => {}
+                }
+            }
+            self.clear();
+            self.status();
+            self.draw();
+
+            self.stdout.flush();
+            thread::sleep(std::time::Duration::from_millis(500));
         }
     }
 
-    pub fn resize(&mut self) {
+    pub fn process(&mut self) {                
         let rstdout = stdout().into_raw_mode().unwrap();
+        
+        loop {
+            let mut b: [u8; 1] = [0];
 
-        let stdin = self.stdin.lock();
+            let alive = self.collect_alive().len();
+            let size = self.width.clone();
 
-        for key in stdin.keys() {
-            match key.unwrap() {
-                Key::Char('q') => {break},
-                Key::Char('+') => {
-                    self.change_world(Vary::Increase);
+            Menu::draw_menu(&mut self.stdout);
+            Menu::draw_info(&mut self.stdout, alive, size);
+
+            if self.stdin.read(&mut b).is_ok() {
+                match b[0] {
+                    b'q' => {
+                        self.state = State::Exit;
+                    },
+                    b'r' => self.state = State::Resize,
+                    b'd' => self.state = State::Draw,
+                    b'm' => self.state = State::Modify,
+                    _ => {},
                 }
-                Key::Char('-') => {
-                    self.change_world(Vary::Decrease);
-                },
-                _ => {}
             }
-            self.draw();
-            self.status();
 
-            self.stdout.flush();
+            match self.state {
+                State::Draw => {
+                    self.draw();
+                    self.next(); 
+                },
+                State::Resize => {
+                    self.resize();
+                    self.state = State::Draw;
+                },
+                State::Modify => {
+                    self.modify();
+                    self.state = State::Draw;
+                },
+                State::Exit => {
+                    break;
+                }
+            }
+            
+            thread::sleep(std::time::Duration::from_millis(500));
         }
     }
 }
@@ -362,7 +426,6 @@ mod tests {
 
     mod neighbours {
         use crate::{life::Organism, world::World};
-
         
         #[test]
         fn collect_alive_neighbours() {
