@@ -412,6 +412,8 @@ impl World {
                     self.state = State::Draw;
                 },
                 State::Exit => {
+                    write!(self.stdout,"{} {}\n", termion::clear::UntilNewline, "Goodbye!");
+
                     break;
                 }
             }
